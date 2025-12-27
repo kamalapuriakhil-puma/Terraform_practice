@@ -1,0 +1,66 @@
+module "ec2_instance" {
+  source  = "terraform-aws-modules/ec2-instance/aws"
+
+  name = "single-instance"
+
+  instance_type = "t3.micro"
+  key_name      = "user1"
+  monitoring    = true
+  subnet_id     = "subnet-08f0a2f506cdc3c32"
+
+  user_data = <<-EOF
+              #!/bin/bash
+              yum update -y
+
+              # Install Java (Tomcat dependency)
+              yum install -y java-1.8.0-openjdk
+
+              # Create tomcat user
+              useradd -m -U -d /opt/tomcat -s /bin/false tomcat
+
+              # Download Tomcat
+              cd /tmp
+              wget https://archive.apache.org/dist/tomcat/tomcat-9/v9.0.85/bin/apache-tomcat-9.0.85.tar.gz
+
+              # Extract Tomcat
+              mkdir /opt/tomcat
+              tar xzf apache-tomcat-9.0.85.tar.gz -C /opt/tomcat --strip-components=1
+
+              # Set permissions
+              chown -R tomcat:tomcat /opt/tomcat
+              chmod +x /opt/tomcat/bin/*.sh
+
+              # Create systemd service
+              cat <<EOT > /etc/systemd/system/tomcat.service
+              [Unit]
+              Description=Apache Tomcat
+              After=network.target
+
+              [Service]
+              Type=forking
+              User=tomcat
+              Group=tomcat
+              Environment=JAVA_HOME=/usr/lib/jvm/jre
+              Environment=CATALINA_PID=/opt/tomcat/temp/tomcat.pid
+              Environment=CATALINA_HOME=/opt/tomcat
+              Environment=CATALINA_BASE=/opt/tomcat
+              ExecStart=/opt/tomcat/bin/startup.sh
+              ExecStop=/opt/tomcat/bin/shutdown.sh
+              Restart=on-failure
+
+              [Install]
+              WantedBy=multi-user.target
+              EOT
+
+              # Reload systemd and start Tomcat
+              systemctl daemon-reexec
+              systemctl daemon-reload
+              systemctl enable tomcat
+              systemctl start tomcat
+              EOF
+
+  tags = {
+    Terraform   = "true"
+    Environment = "dev"
+  }
+}
